@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>氣溫雨量圖產生器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/*
+VOICE: 地理課本的清楚、可靠，適合投影與列印
+IDEA: 地圖集裡的氣候圖頁面
+PICTURE: 兩張氣候圖本身就是主角
+COLOUR and TYPE: 白底、氣溫紅 #d7192a、雨量藍 #8fd0f0／#1f6fb2，Noto Sans TC
+LAYOUT: 搜尋欄置頂置中，下方兩張圖並排（窄螢幕上下排列），再接資料表
+*/
+:root{color-scheme:light dark;
+  --bg:light-dark(#f6f8fa,#0f1419);--card:light-dark(#fff,#182029);--ink:light-dark(#18212b,#e6edf3);
+  --mute:light-dark(#5b6875,#9aa7b4);--line:light-dark(#d9e0e7,#2b3742);
+  --red:#d7192a;--blue:light-dark(#1f6fb2,#5fb0ef);--bar:#8fd0f0;--barline:#3f8fc4;--purple:#8e2c8e}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 "Noto Sans TC",system-ui,"Microsoft JhengHei",sans-serif;overflow-x:clip}
+header{padding:clamp(28px,5vw,56px) max(5vw,16px) 12px;text-align:center}
+h1{font-size:clamp(28px,4vw,40px);line-height:1.1;margin:0 0 6px;text-wrap:balance}
+h1 b{color:var(--red)}h1 i{font-style:normal;color:var(--blue)}
+.sub{color:var(--mute);margin:0 0 22px}
+form{display:flex;max-width:640px;margin:0 auto;background:var(--card);border:1px solid var(--line);border-radius:999px;box-shadow:0 2px 10px rgba(0,0,0,.08);padding:4px 4px 4px 20px;align-items:center}
+form:focus-within{box-shadow:0 2px 16px rgba(31,111,178,.25);border-color:var(--blue)}
+input{flex:1;border:0;background:none;color:var(--ink);font:inherit;font-size:17px;padding:10px 4px;outline:none}
+button{font:inherit;cursor:pointer;border-radius:999px;border:0;min-height:44px}
+form button{background:var(--blue);color:#fff;padding:0 22px;font-weight:700}
+button:focus-visible,select:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+.opts{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:14px 0 0;color:var(--mute);font-size:14px;align-items:center}
+select{font:inherit;font-size:15px;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);min-height:40px}
+.quick{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:12px}
+.chip{background:var(--card);border:1px solid var(--line);color:var(--ink);padding:0 14px;font-size:14px;min-height:36px}
+.chip:hover{border-color:var(--blue);color:var(--blue)}
+.axis{max-width:900px;margin:14px auto 0;border:1px solid var(--line);border-radius:12px;padding:8px 14px 12px;display:flex;flex-wrap:wrap;gap:8px 14px;justify-content:center;align-items:center;font-size:14px;color:var(--mute)}
+.axis legend{padding:0 6px}
+.axis input{width:4.6em;flex:none;border:1px solid var(--line);border-radius:8px;background:var(--card);padding:6px 8px;font-size:16px;margin:0 3px;text-align:right}
+#axmsg{flex-basis:100%;text-align:center;min-height:1.2em;color:var(--red)}
+#axmsg:empty{display:none}
+#cands{max-width:900px;margin:14px auto 0;display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+#status{text-align:center;color:var(--mute);min-height:1.6em;margin:10px 16px 0}
+#status.err{color:var(--red)}
+main{max-width:1240px;margin:0 auto;padding:8px max(4vw,12px) 40px}
+.place{text-align:center;margin:12px 0 18px}
+.place h2{font-size:clamp(24px,3vw,32px);margin:0;line-height:1.2}
+.place p{margin:4px 0 0;color:var(--mute);font-size:15px}
+.kg{display:inline-block;margin-top:8px;padding:4px 12px;border-radius:999px;background:light-dark(#eef4fa,#1d2b38);font-size:15px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+.card h3{margin:0 0 8px;font-size:17px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.card h3 button{background:none;border:1px solid var(--line);color:var(--ink);font-size:13px;font-weight:500;padding:0 12px;min-height:34px}
+.card svg{width:100%;height:auto;display:block}
+.tbl{overflow-x:auto;margin-top:18px}
+table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+thead th{color:var(--mute);font-weight:500}
+.note{color:var(--mute);font-size:13.5px;margin-top:14px;line-height:1.7}
+.note a{color:var(--blue)}
+.empty{text-align:center;color:var(--mute);padding:40px 0}
+@media(max-width:600px){form{padding-left:14px}form button{padding:0 16px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>氣溫<b>雨量</b>圖產生器</h1>
+  <p class="sub">輸入城市名稱（中、英文都可以），自動畫出氣候圖</p>
+  <form id="f" autocomplete="off">
+    <input id="q" type="search" placeholder="例如：臺北、London、Manaus" aria-label="城市名稱">
+    <button type="submit">搜尋</button>
+  </form>
+  <div class="opts">
+    <label for="yr">資料期間</label>
+    <select id="yr">
+      <option value="10">近 10 年（2016–2025）</option>
+      <option value="30">氣候平年值（1991–2020）</option>
+      <option value="5">近 5 年（2021–2025）</option>
+    </select>
+    <label for="rng">年溫差</label>
+    <select id="rng">
+      <option value="full">顯示箭頭與度數（上課講解）</option>
+      <option value="arrow">只畫箭頭，不標度數（讓學生計算）</option>
+      <option value="off">不顯示（出考卷）</option>
+    </select>
+  </div>
+  <fieldset class="axis" id="axis">
+    <legend>刻度設定（留白＝自動）</legend>
+    <label>氣溫最低 <input type="number" id="tlo" step="1" inputmode="numeric">℃</label>
+    <label>氣溫最高 <input type="number" id="thi" step="1" inputmode="numeric">℃</label>
+    <label>氣溫間距 <input type="number" id="tst" step="1" min="1" inputmode="numeric">℃</label>
+    <label>雨量每格 <input type="number" id="pst" step="10" min="10" inputmode="numeric">mm</label>
+    <button type="button" class="chip" id="apply">套用</button>
+    <button type="button" class="chip" id="auto">恢復自動</button>
+    <span id="axmsg"></span>
+  </fieldset>
+  <div class="quick" id="quick"></div>
+  <div id="cands"></div>
+  <div id="status" role="status"></div>
+</header>
+<main id="out"><div class="empty">搜尋一個城市開始，或點上面的範例城市。</div></main>
+
+<script>
+{
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const FONT='"Noto Sans TC","Microsoft JhengHei","PingFang TC",sans-serif';
+
+/* 常用中文城市名 → 英文查詢字（Open-Meteo 地名庫以英文最準確） */
+const ZH={'台北':'Taipei','臺北':'Taipei','新北':'New Taipei','桃園':'Taoyuan','新竹':'Hsinchu','台中':'Taichung','臺中':'Taichung','台南':'Tainan','臺南':'Tainan','高雄':'Kaohsiung','基隆':'Keelung','宜蘭':'Yilan','花蓮':'Hualien','台東':'Taitung','臺東':'Taitung','嘉義':'Chiayi','屏東':'Pingtung','恆春':'Hengchun','澎湖':'Magong','馬公':'Magong','金門':'Jincheng','馬祖':'Nangan',
+'東京':'Tokyo','大阪':'Osaka','札幌':'Sapporo','那霸':'Naha','首爾':'Seoul','釜山':'Busan','平壤':'Pyongyang','北京':'Beijing','上海':'Shanghai','香港':'Hong Kong','澳門':'Macau','廣州':'Guangzhou','重慶':'Chongqing','武漢':'Wuhan','哈爾濱':'Harbin','烏魯木齊':'Urumqi','拉薩':'Lhasa','昆明':'Kunming','蘭州':'Lanzhou','西安':'Xian','烏蘭巴托':'Ulaanbaatar',
+'新加坡':'Singapore','曼谷':'Bangkok','河內':'Hanoi','胡志明市':'Ho Chi Minh City','馬尼拉':'Manila','雅加達':'Jakarta','吉隆坡':'Kuala Lumpur','仰光':'Yangon','金邊':'Phnom Penh','孟買':'Mumbai','新德里':'New Delhi','加爾各答':'Kolkata','清奈':'Chennai','喀拉蚩':'Karachi','達卡':'Dhaka','可倫坡':'Colombo','加德滿都':'Kathmandu','乞拉朋吉':'Cherrapunji',
+'德黑蘭':'Tehran','利雅德':'Riyadh','杜拜':'Dubai','巴格達':'Baghdad','耶路撒冷':'Jerusalem','伊斯坦堡':'Istanbul','開羅':'Cairo','奈洛比':'Nairobi','拉哥斯':'Lagos','開普敦':'Cape Town','約翰尼斯堡':'Johannesburg','金夏沙':'Kinshasa','阿迪斯阿貝巴':'Addis Ababa','卡薩布蘭加':'Casablanca','廷巴克圖':'Timbuktu',
+'倫敦':'London','巴黎':'Paris','柏林':'Berlin','羅馬':'Rome','馬德里':'Madrid','里斯本':'Lisbon','雅典':'Athens','維也納':'Vienna','阿姆斯特丹':'Amsterdam','華沙':'Warsaw','斯德哥爾摩':'Stockholm','奧斯陸':'Oslo','赫爾辛基':'Helsinki','雷克雅維克':'Reykjavik','莫斯科':'Moscow','伊爾庫次克':'Irkutsk','雅庫次克':'Yakutsk','海參崴':'Vladivostok','奧米亞康':'Oymyakon',
+'紐約':'New York','洛杉磯':'Los Angeles','舊金山':'San Francisco','芝加哥':'Chicago','邁阿密':'Miami','西雅圖':'Seattle','休士頓':'Houston','拉斯維加斯':'Las Vegas','鳳凰城':'Phoenix','安克拉治':'Anchorage','檀香山':'Honolulu','溫哥華':'Vancouver','多倫多':'Toronto','蒙特婁':'Montreal','墨西哥城':'Mexico City',
+'利馬':'Lima','馬瑙斯':'Manaus','里約熱內盧':'Rio de Janeiro','聖保羅':'Sao Paulo','布宜諾斯艾利斯':'Buenos Aires','聖地牙哥':'Santiago','拉巴斯':'La Paz','基多':'Quito','波哥大':'Bogota','卡拉卡斯':'Caracas',
+'雪梨':'Sydney','墨爾本':'Melbourne','伯斯':'Perth','布里斯本':'Brisbane','達爾文':'Darwin','愛麗斯泉':'Alice Springs','奧克蘭':'Auckland','威靈頓':'Wellington'};
+const QUICK=['臺北','東京','倫敦','莫斯科','新加坡','開羅','馬瑙斯','雪梨','羅馬','伊爾庫次克'];
+$('#quick').innerHTML=QUICK.map(c=>`<button class="chip" type="button" data-q="${c}">${c}</button>`).join('');
+
+const PERIOD={10:['2016-01-01','2025-12-31'],30:['1991-01-01','2020-12-31'],5:['2021-01-01','2025-12-31']};
+let current=null,lastStats=null;
+
+const NETMSG='連不到氣象資料庫。若你是在 Claude 對話中預覽這個檔案，預覽視窗會封鎖對外連線：請先下載檔案，再用 Chrome、Edge 或 Safari 開啟；或把它放到網站空間（如 GitHub Pages）上使用。';
+async function get(url){try{return await fetch(url)}catch(e){throw new Error(NETMSG)}}
+const status=(t,err)=>{const s=$('#status');s.textContent=t;s.className=err?'err':''};
+
+async function geocode(q){
+  const tries=[q];
+  const key=q.replace(/市$/,'');
+  if(ZH[key])tries.unshift(ZH[key]); else if(ZH[q])tries.unshift(ZH[q]);
+  for(const t of tries){
+    const r=await get(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(t)}&count=8&language=zh&format=json`);
+    if(!r.ok)throw new Error('地名查詢失敗（'+r.status+'）');
+    const j=await r.json();
+    if(j.results&&j.results.length)return j.results;
+  }
+  return [];
+}
+
+function cacheGet(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null}catch(e){return null}}
+function cacheSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+
+async function climate(lat,lon,yrs){
+  const [s,e]=PERIOD[yrs];
+  const k=`clim:${lat.toFixed(2)},${lon.toFixed(2)}:${s}:${e}`;
+  const c=cacheGet(k); if(c)return c;
+  const url=`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${s}&end_date=${e}&daily=temperature_2m_mean,precipitation_sum&timezone=auto`;
+  const r=await get(url);
+  if(!r.ok){let m='';try{m=(await r.json()).reason||''}catch(x){} throw new Error('氣候資料下載失敗：'+(m||r.status));}
+  const j=await r.json(),d=j.daily;
+  // 先算每一個「年-月」的平均氣溫與總雨量，再對所有年份平均
+  const ym={};
+  d.time.forEach((t,i)=>{const key=t.slice(0,7);(ym[key]??={t:[],p:[]});
+    if(d.temperature_2m_mean[i]!=null)ym[key].t.push(d.temperature_2m_mean[i]);
+    if(d.precipitation_sum[i]!=null)ym[key].p.push(d.precipitation_sum[i]);});
+  const T=Array.from({length:12},()=>[]),P=Array.from({length:12},()=>[]);
+  for(const key in ym){const m=+key.slice(5,7)-1,o=ym[key];
+    if(o.t.length>=20)T[m].push(o.t.reduce((a,b)=>a+b,0)/o.t.length);
+    if(o.p.length>=20)P[m].push(o.p.reduce((a,b)=>a+b,0)*(daysIn(key)/o.p.length));}
+  const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:NaN;
+  const out={t:T.map(avg),p:P.map(avg),elev:j.elevation,s,e};
+  cacheSet(k,out); return out;
+}
+function daysIn(key){const [y,m]=key.split('-').map(Number);return new Date(y,m,0).getDate()}
+
+/* ---------- 柯本氣候分類（傳統版：最冷月 −3°C 為 C/D 界線） ---------- */
+function koppen(t,p,lat){
+  const Tann=t.reduce((a,b)=>a+b)/12,Pann=p.reduce((a,b)=>a+b),Th=Math.max(...t),Tc=Math.min(...t);
+  const sumIdx=lat>=0?[3,4,5,6,7,8]:[9,10,11,0,1,2],winIdx=[0,1,2,3,4,5,6,7,8,9,10,11].filter(i=>!sumIdx.includes(i));
+  const Ps=sumIdx.reduce((a,i)=>a+p[i],0);
+  if(Th<10)return Th>0?['ET','苔原氣候']:['EF','冰原氣候'];
+  let th=2*Tann+14; if(Ps>=0.7*Pann)th=2*Tann+28; else if(Pann-Ps>=0.7*Pann)th=2*Tann;
+  if(Pann<10*th){const w=Pann<5*th?'W':'S',h=Tann>=18?'h':'k';
+    return ['B'+w+h,(w==='W'?'沙漠氣候':'草原（半乾燥）氣候')+(h==='h'?'（熱）':'（冷）')];}
+  const Pdry=Math.min(...p);
+  if(Tc>=18){if(Pdry>=60)return ['Af','熱帶雨林氣候'];if(Pdry>=100-Pann/25)return ['Am','熱帶季風氣候'];return ['Aw','熱帶莽原氣候'];}
+  const L=Tc>-3?'C':'D';
+  const sMin=Math.min(...sumIdx.map(i=>p[i])),sMax=Math.max(...sumIdx.map(i=>p[i])),wMin=Math.min(...winIdx.map(i=>p[i])),wMax=Math.max(...winIdx.map(i=>p[i]));
+  let s2='f'; if(sMin<40&&sMin<wMax/3)s2='s'; else if(wMin<sMax/10)s2='w';
+  const n10=t.filter(x=>x>=10).length;
+  let s3=Th>=22?'a':n10>=4?'b':(L==='D'&&Tc<-38)?'d':'c';
+  const code=L+s2+s3;
+  const names={Cfa:'溫帶濕潤氣候（夏熱）',Cfb:'溫帶海洋性氣候',Cfc:'溫帶海洋性氣候（涼夏）',Csa:'地中海型氣候（夏熱）',Csb:'地中海型氣候（夏暖）',Csc:'地中海型氣候（涼夏）',Cwa:'溫帶季風氣候（夏熱）',Cwb:'溫帶季風／高地氣候',Cwc:'溫帶季風氣候（涼夏）',
+    Dfa:'溫帶大陸性濕潤氣候（夏熱）',Dfb:'溫帶大陸性濕潤氣候（夏暖）',Dfc:'副極地（針葉林）氣候',Dfd:'副極地（極寒）氣候',Dwa:'溫帶大陸性季風氣候（夏熱）',Dwb:'溫帶大陸性季風氣候（夏暖）',Dwc:'副極地季風氣候',Dwd:'副極地季風氣候（極寒）',Dsa:'大陸性地中海型氣候',Dsb:'大陸性地中海型氣候',Dsc:'副極地夏乾氣候',Dsd:'副極地夏乾氣候（極寒）'};
+  return [code,names[code]||'溫帶／冷溫帶氣候'];
+}
+
+/* ---------- 圖一：傳統氣溫雨量圖 ---------- */
+/* 刻度：自動計算，或採用教師自訂值（皆為整數） */
+const num=id=>{const v=$(id).value.trim();return v===''?null:Math.round(+v)};
+function axisCfg(t,p){
+  const minT=Math.min(...t),maxT=Math.max(...t),maxP=Math.max(...p);
+  // 自動值：5℃ 一格，優先保持「5℃ 對 50 mm」（1:10）的課本比例
+  let tStep=5,tLo=Math.min(0,Math.floor(minT/5)*5);
+  let n=Math.max(1,Math.ceil((maxT-tLo)/5)),pStep=50;
+  while(pStep*n<maxP&&n<10)n++;
+  for(const s of [50,100,150,200,250,300,400,500]){pStep=s;if(s*n>=maxP)break;}
+  let tHi=tLo+n*5,custom=false,msg='';
+  const ulo=num('#tlo'),uhi=num('#thi'),ust=num('#tst'),ups=num('#pst');
+  if(ulo!=null||uhi!=null||ust!=null){
+    custom=true;
+    tStep=ust!=null&&ust>0?ust:tStep;
+    tLo=ulo!=null?ulo:Math.floor(minT/tStep)*tStep;
+    tHi=uhi!=null?uhi:Math.ceil(maxT/tStep)*tStep;
+    if(tHi<=tLo){tHi=tLo+tStep;msg='氣溫最高必須大於最低，已自動調整。';}
+    if((tHi-tLo)%tStep){tHi=tLo+Math.ceil((tHi-tLo)/tStep)*tStep;msg+=`範圍無法被間距整除，最高值調為 ${tHi}℃。`;}
+    if((tHi-tLo)/tStep>30){tStep=Math.ceil((tHi-tLo)/30);tHi=tLo+Math.ceil((tHi-tLo)/tStep)*tStep;msg+=`格數太多，間距調為 ${tStep}℃。`;}
+    n=(tHi-tLo)/tStep;
+    pStep=[10,20,25,50,100,150,200,250,300,400,500,1000].find(s=>s*n>=maxP)||Math.ceil(maxP/n/100)*100;
+  }
+  if(ups!=null&&ups>0){pStep=ups;custom=true;}
+  if(minT<tLo||maxT>tHi)msg+='部分氣溫超出刻度範圍，超出的線段不會畫出。';
+  if(maxP>pStep*n)msg+='部分雨量超出刻度範圍，長條會被截斷。';
+  return {tLo,tHi,tStep,n,pStep,pHi:pStep*n,custom,msg};
+}
+
+function chart1(t,p,A){
+  const W=380,H=500,L=58,R=58,Tp=78,B=46,pw=W-L-R,ph=H-Tp-B;
+  const minT=Math.min(...t),maxT=Math.max(...t);
+  const {tLo,tHi,tStep,n,pStep:step,pHi}=A;
+  const y=v=>Tp+ph*(1-(v-tLo)/(tHi-tLo)),yp=v=>Tp+ph*(1-Math.min(v,pHi)/pHi),bw=pw/12,x=i=>L+bw*(i+.5);
+  const Tann=t.reduce((a,b)=>a+b)/12,Pann=p.reduce((a,b)=>a+b);
+  let g=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" font-family='${FONT}'><rect width="${W}" height="${H}" fill="#fff"/>`;
+  g+=`<text x="6" y="22" fill="#d7192a" font-size="16">年均溫 ${Tann.toFixed(1)}℃</text><text x="${W-6}" y="22" fill="#1f6fb2" font-size="16" text-anchor="end">年降水量 ${Math.round(Pann)}mm</text>`;
+  g+=`<text x="10" y="48" font-size="15" fill="#222">氣溫</text><text x="12" y="64" font-size="11" fill="#444">(℃)</text><text x="${W-8}" y="48" font-size="15" fill="#222" text-anchor="end">降水量</text><text x="${W-10}" y="64" font-size="11" fill="#444" text-anchor="end">(mm)</text>`;
+  g+=`<defs><clipPath id="pa1"><rect x="${L}" y="${Tp}" width="${pw}" height="${ph}"/></clipPath></defs>`;
+  const fs=n>15?11:14;
+  for(let k=0;k<=n;k++){const tv=tLo+k*tStep,yy=y(tv);
+    g+=`<line x1="${L}" x2="${L+pw}" y1="${yy}" y2="${yy}" stroke="#d5d9de" stroke-width="1"/>`;
+    g+=`<text x="${L-8}" y="${yy+5}" font-size="${fs}" text-anchor="end" fill="#222">${tv}</text><text x="${L+pw+8}" y="${yy+5}" font-size="${fs}" fill="#222">${k*step}</text>`;}
+  p.forEach((v,i)=>{const yy=yp(v);g+=`<rect x="${L+bw*i}" y="${yy}" width="${bw}" height="${Tp+ph-yy}" fill="#8fd0f0" stroke="#3f8fc4" stroke-width="1"/>`});
+  g+=`<rect x="${L}" y="${Tp}" width="${pw}" height="${ph}" fill="none" stroke="#333" stroke-width="1.2"/>`;
+  // 平滑折線（Catmull-Rom）
+  const pts=t.map((v,i)=>[x(i),y(v)]);let d=`M${pts[0][0]},${pts[0][1]}`;
+  for(let i=0;i<11;i++){const p0=pts[Math.max(0,i-1)],p1=pts[i],p2=pts[i+1],p3=pts[Math.min(11,i+2)];
+    d+=` C${p1[0]+(p2[0]-p0[0])/6},${p1[1]+(p2[1]-p0[1])/6} ${p2[0]-(p3[0]-p1[0])/6},${p2[1]-(p3[1]-p1[1])/6} ${p2[0]},${p2[1]}`;}
+  g+=`<path d="${d}" fill="none" stroke="#d7192a" stroke-width="3.5" stroke-linecap="round" clip-path="url(#pa1)"/>`;
+  const rm=$('#rng').value;
+  if(rm!=='off'&&minT>=tLo&&maxT<=tHi){const iM=t.indexOf(maxT),im=t.indexOf(minT),ax=L+10;
+    g+=`<line x1="${ax}" x2="${x(iM)}" y1="${y(maxT)}" y2="${y(maxT)}" stroke="#8e2c8e" stroke-width="1.6" stroke-dasharray="5 4"/>`;
+    g+=`<line x1="${ax}" x2="${x(im)}" y1="${y(minT)}" y2="${y(minT)}" stroke="#8e2c8e" stroke-width="1.6" stroke-dasharray="5 4"/>`;
+    g+=`<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="#8e2c8e"/></marker></defs>`;
+    g+=`<line x1="${ax}" x2="${ax}" y1="${y(maxT)+3}" y2="${y(minT)-3}" stroke="#8e2c8e" stroke-width="2" marker-start="url(#ah)" marker-end="url(#ah)"/>`;
+    const my=(y(maxT)+y(minT))/2;
+    if(rm==='full'&&y(minT)-y(maxT)>40)g+=`<text x="${ax+6}" y="${my+4}" font-size="12" fill="#8e2c8e" stroke="#fff" stroke-width="3" paint-order="stroke">年溫差 ${(maxT-minT).toFixed(1)}℃</text>`;}
+  for(let i=0;i<12;i++)g+=`<text x="${x(i)}" y="${Tp+ph+20}" font-size="14" text-anchor="middle" fill="#222">${i+1}</text>`;
+  g+=`<text x="${L+pw+6}" y="${Tp+ph+20}" font-size="13" fill="#222">(月)</text></svg>`;
+  return g;
+}
+
+/* ---------- 圖二：散布圖（月均溫 × 月雨量） ---------- */
+function nice(span,target){const raw=span/target,mag=10**Math.floor(Math.log10(raw)),f=raw/mag;return (f<=1?1:f<=2?2:f<=2.5?2.5:f<=5?5:10)*mag;}
+function chart2(t,p,A){
+  const W=480,H=340,L=62,R=22,Tp=24,B=56,pw=W-L-R,ph=H-Tp-B;
+  const minT=Math.min(...t),maxT=Math.max(...t),maxP=Math.max(...p);
+  let xs,x0,x1,ys,y1;
+  if(A.custom&&(num('#tlo')!=null||num('#thi')!=null||num('#tst')!=null)){xs=A.tStep;x0=A.tLo;x1=A.tHi;}
+  else{const span=Math.max(2,maxT-minT+1);xs=[1,2,5,10].find(s=>span/s<=8)||10;
+    x0=Math.floor((minT-.5)/xs)*xs;x1=Math.ceil((maxT+.5)/xs)*xs;}
+  if(num('#pst')!=null){ys=A.pStep;y1=Math.max(ys,Math.ceil(maxP/ys)*ys);}
+  else{ys=Math.max(10,Math.round(nice(Math.max(10,maxP),6)));y1=Math.ceil(maxP*1.08/ys)*ys||ys;}
+  const X=v=>L+pw*(v-x0)/(x1-x0),Y=v=>Tp+ph*(1-v/y1);
+  let g=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" font-family='${FONT}'><rect width="${W}" height="${H}" fill="#fff"/>`;
+  g+=`<rect x="${L}" y="${Tp}" width="${pw}" height="${ph}" fill="none" stroke="#888"/>`;
+  for(let v=0;v<=y1+1e-9;v+=ys){g+=`<line x1="${L}" x2="${L+pw}" y1="${Y(v)}" y2="${Y(v)}" stroke="#e1e4e8"/><text x="${L-8}" y="${Y(v)+4}" font-size="12" text-anchor="end" fill="#222">${+v.toFixed(1)}</text>`;}
+  const nx=Math.round((x1-x0)/xs),lblEvery=Math.ceil(nx/12);
+  for(let k=0;k<=nx;k++){const v=x0+k*xs;g+=`<line x1="${X(v)}" x2="${X(v)}" y1="${Tp+ph}" y2="${Tp+ph+5}" stroke="#888"/>`+(k%lblEvery?'':`<text x="${X(v)}" y="${Tp+ph+20}" font-size="12" text-anchor="middle" fill="#222">${v}</text>`);}
+  g+=`<defs><clipPath id="pa2"><rect x="${L}" y="${Tp}" width="${pw}" height="${ph}"/></clipPath></defs>`;
+  g+=`<text x="${L+pw/2}" y="${H-10}" font-size="14" text-anchor="middle" fill="#222">月均溫 ℃</text>`;
+  g+=`<text x="16" y="${Tp+ph/2}" font-size="13" fill="#222" text-anchor="middle" transform="rotate(-90 16 ${Tp+ph/2})">月雨量 mm</text>`;
+  g+=`<text x="${L+8}" y="${Tp+18}" font-size="12" fill="#444">圖中阿拉伯數字為月份</text>`;
+  const pts=t.map((v,i)=>[X(v),Y(p[i])]);
+  g+=`<g clip-path="url(#pa2)"><polygon points="${pts.map(q=>q.join(',')).join(' ')}" fill="none" stroke="#2b4c7e" stroke-width="1.6" stroke-linejoin="round"/>`;
+  const cx=pts.reduce((a,q)=>a+q[0],0)/12,cy=pts.reduce((a,q)=>a+q[1],0)/12;
+  pts.forEach((q,i)=>{if(t[i]<x0||t[i]>x1||p[i]>y1)return;let dx=q[0]-cx,dy=q[1]-cy;const m=Math.hypot(dx,dy)||1;dx/=m;dy/=m;
+    g+=`<circle cx="${q[0]}" cy="${q[1]}" r="3.5" fill="#2b4c7e" stroke="#fff" stroke-width="1"/>`;
+    g+=`<text x="${q[0]+dx*13}" y="${q[1]+dy*13+4}" font-size="13" text-anchor="middle" fill="#111" stroke="#fff" stroke-width="3" paint-order="stroke">${i+1}</text>`;});
+  return g+'</g></svg>';
+}
+
+function download(svgId,name){
+  const svg=document.getElementById(svgId).querySelector('svg'),vb=svg.viewBox.baseVal,sc=3;
+  const img=new Image(),c=document.createElement('canvas');c.width=vb.width*sc;c.height=vb.height*sc;
+  img.onload=()=>{const x=c.getContext('2d');x.drawImage(img,0,0,c.width,c.height);
+    c.toBlob(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)});};
+  img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(new XMLSerializer().serializeToString(svg));
+}
+
+function render(){
+  if(!current||!lastStats)return;
+  const {t,p,elev,s,e}=lastStats,pl=current;
+  const [kc,kn]=koppen(t,p,pl.latitude);
+  const A=axisCfg(t,p);
+  $('#axmsg').textContent=A.msg;
+  // 自動模式時，把自動算出的刻度顯示成提示文字，方便老師由此微調
+  $('#tlo').placeholder=A.tLo;$('#thi').placeholder=A.tHi;$('#tst').placeholder=A.tStep;$('#pst').placeholder=A.pStep;
+  const fmtLat=v=>`${Math.abs(v).toFixed(2)}°${v>=0?'N':'S'}`,fmtLon=v=>`${Math.abs(v).toFixed(2)}°${v>=0?'E':'W'}`;
+  const iMax=p.indexOf(Math.max(...p)),iMin=p.indexOf(Math.min(...p));
+  $('#out').innerHTML=`
+  <div class="place"><h2>${esc(pl.name)}${pl.admin1?'，'+esc(pl.admin1):''}${pl.country?'，'+esc(pl.country):''}</h2>
+   <p>${fmtLat(pl.latitude)}　${fmtLon(pl.longitude)}　海拔約 ${Math.round(elev??pl.elevation??0)} m　資料期間 ${s.slice(0,4)}–${e.slice(0,4)} 年平均</p>
+   <span class="kg">柯本氣候分類參考：<b>${kc}</b> ${kn}</span></div>
+  <div class="grid">
+   <div class="card"><h3>氣溫雨量圖<button type="button" data-dl="c1">下載 PNG</button></h3><div id="c1">${chart1(t,p,A)}</div></div>
+   <div class="card"><h3>氣溫雨量散布圖<button type="button" data-dl="c2">下載 PNG</button></h3><div id="c2">${chart2(t,p,A)}</div>
+    <p class="note">${$('#rng').value==='full'?`年溫差 ${(Math.max(...t)-Math.min(...t)).toFixed(1)}℃；`:''}最多雨月 ${iMax+1} 月（${Math.round(p[iMax])} mm），最少雨月 ${iMin+1} 月（${Math.round(p[iMin])} mm）。</p></div>
+  </div>
+  <div class="card tbl"><h3>逐月資料<button type="button" id="cp">複製表格</button></h3>
+   <table><thead><tr><th>月份</th>${t.map((_,i)=>`<th>${i+1}</th>`).join('')}<th>全年</th></tr></thead>
+   <tbody><tr><td>月均溫（℃）</td>${t.map(v=>`<td>${v.toFixed(1)}</td>`).join('')}<td>${(t.reduce((a,b)=>a+b)/12).toFixed(1)}</td></tr>
+   <tr><td>月雨量（mm）</td>${p.map(v=>`<td>${v.toFixed(0)}</td>`).join('')}<td>${p.reduce((a,b)=>a+b).toFixed(0)}</td></tr></tbody></table></div>
+  <p class="note">資料來源：<a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> Historical Weather API（ECMWF ERA5／ERA5-Land 再分析資料，CC BY 4.0）。再分析資料是格點（約 9–25 km）推估值，與單一氣象站的觀測平年值可能有 1–2℃ 或數十 mm 的差距，高山、海岸與地形複雜處差異較大。柯本分類依傳統定義（最冷月 −3℃ 為 C／D 界線）自動判定，僅供教學參考。</p>`;
+}
+
+async function run(q){
+  q=q.trim(); if(q.length<2){status('請輸入至少兩個字',true);return;}
+  $('#cands').innerHTML='';status('搜尋地點中…');
+  try{
+    const res=await geocode(q);
+    if(!res.length){status(`找不到「${q}」，試試英文名稱（例如 Taipei）`,true);return;}
+    window._cands=res;
+    if(res.length>1)$('#cands').innerHTML=res.map((r,i)=>`<button class="chip" type="button" data-c="${i}">${esc(r.name)}${r.admin1?'・'+esc(r.admin1):''}${r.country?'・'+esc(r.country):''}</button>`).join('');
+    await pick(res[0]);
+  }catch(err){status(err.name==='TypeError'?NETMSG:err.message,true);}
+}
+async function pick(pl){
+  current=pl;status(`下載 ${pl.name} 的氣候資料中…（第一次約需數秒）`);
+  try{lastStats=await climate(pl.latitude,pl.longitude,$('#yr').value);
+    if(lastStats.t.some(isNaN)||lastStats.p.some(isNaN))throw new Error('此地點資料不完整');
+    status('');render();}
+  catch(err){status(err.name==='TypeError'?NETMSG:err.message,true);}
+}
+
+$('#f').addEventListener('submit',e=>{e.preventDefault();run($('#q').value)});
+$('#quick').addEventListener('click',e=>{const b=e.target.closest('[data-q]');if(b){$('#q').value=b.dataset.q;run(b.dataset.q)}});
+$('#cands').addEventListener('click',e=>{const b=e.target.closest('[data-c]');if(b)pick(window._cands[+b.dataset.c])});
+$('#yr').addEventListener('change',()=>{if(current)pick(current)});
+$('#rng').addEventListener('change',render);
+$('#apply').addEventListener('click',render);
+$('#auto').addEventListener('click',()=>{for(const id of ['#tlo','#thi','#tst','#pst'])$(id).value='';render()});
+$('#axis').addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.tagName==='INPUT'){e.preventDefault();render()}});
+$('#axis').addEventListener('change',e=>{if(e.target.tagName==='INPUT')render()});
+$('#out').addEventListener('click',e=>{
+  const b=e.target.closest('[data-dl]');if(b)download(b.dataset.dl,`${current.name}_${b.dataset.dl==='c1'?'氣溫雨量圖':'散布圖'}.png`);
+  if(e.target.id==='cp'){const {t,p}=lastStats;const txt='月份\t'+t.map((_,i)=>i+1).join('\t')+'\n月均溫(℃)\t'+t.map(v=>v.toFixed(1)).join('\t')+'\n月雨量(mm)\t'+p.map(v=>v.toFixed(0)).join('\t');
+    navigator.clipboard.writeText(txt).then(()=>{e.target.textContent='已複製'},()=>{e.target.textContent='無法複製'});}
+});
+}
+</script>
+</body>
+</html>
